@@ -1,6 +1,6 @@
 # go-sfomuseum-airports
 
-Tools for working with airports in a SFO Museum context.
+ Go package for working with airports, in a SFO Museum context. 
 
 ## Install
 
