@@ -12,7 +12,7 @@ import (
 
 func main() {
 
-	iterator_uri := flag.String("iterator-uri", "repo://", "...")
+	iterator_uri := flag.String("iterator-uri", "repo://?include=properties.sfomuseum:placetype=airport", "...")
 	iterator_source := flag.String("iterator-source", "/usr/local/data/sfomuseum-data-whosonfirst", "...")
 
 	target := flag.String("target", "data/sfomuseum.json", "The path to write SFO Museum airline data.")

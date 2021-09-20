@@ -23,6 +23,11 @@ type SFOMuseumLookup struct {
 	airports.Lookup
 }
 
+func init() {
+	ctx := context.Background()
+	airports.RegisterLookup(ctx, "sfomuseum", NewLookup)
+}
+
 func NewLookup(ctx context.Context, uri string) (airports.Lookup, error) {
 
 	fs := data.FS
@@ -45,10 +50,10 @@ func NewLookupFuncWithReader(ctx context.Context, r io.ReadCloser) SFOMuseumLook
 
 		defer r.Close()
 
-		var airport []*Airport
+		var airport_data []*Airport
 
 		dec := json.NewDecoder(r)
-		err := dec.Decode(&airport)
+		err := dec.Decode(&airport_data)
 
 		if err != nil {
 			lookup_init_err = err
@@ -57,7 +62,7 @@ func NewLookupFuncWithReader(ctx context.Context, r io.ReadCloser) SFOMuseumLook
 
 		table := new(sync.Map)
 
-		for idx, craft := range airport {
+		for idx, craft := range airport_data {
 
 			pointer := fmt.Sprintf("pointer:%d", idx)
 			table.Store(pointer, craft)
