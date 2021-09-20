@@ -11,9 +11,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"sync/atomic"
 )
 
 var lookup_table *sync.Map
+var lookup_idx int64
+
 var lookup_init sync.Once
 var lookup_init_err error
 
@@ -26,6 +29,8 @@ type SFOMuseumLookup struct {
 func init() {
 	ctx := context.Background()
 	airports.RegisterLookup(ctx, "sfomuseum", NewLookup)
+
+	lookup_idx = int64(0)
 }
 
 func NewLookup(ctx context.Context, uri string) (airports.Lookup, error) {
@@ -62,52 +67,16 @@ func NewLookupFuncWithReader(ctx context.Context, r io.ReadCloser) SFOMuseumLook
 
 		table := new(sync.Map)
 
-		for idx, craft := range airport_data {
+		for _, data := range airport_data {
 
-			pointer := fmt.Sprintf("pointer:%d", idx)
-			table.Store(pointer, craft)
-
-			str_wofid := strconv.FormatInt(craft.WOFID, 10)
-
-			possible_codes := []string{
-				craft.IATACode,
-				craft.ICAOCode,
-				str_wofid,
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				// pass
 			}
 
-			for _, code := range possible_codes {
-
-				if code == "" {
-					continue
-				}
-
-				pointers := make([]string, 0)
-				has_pointer := false
-
-				others, ok := table.Load(code)
-
-				if ok {
-
-					pointers = others.([]string)
-				}
-
-				for _, dupe := range pointers {
-
-					if dupe == pointer {
-						has_pointer = true
-						break
-					}
-				}
-
-				if has_pointer {
-					continue
-				}
-
-				pointers = append(pointers, pointer)
-				table.Store(code, pointers)
-			}
-
-			idx += 1
+			appendData(ctx, table, data)
 		}
 
 		lookup_table = table
@@ -133,7 +102,7 @@ func NewLookupWithLookupFunc(ctx context.Context, lookup_func SFOMuseumLookupFun
 	return &l, nil
 }
 
-func (l *SFOMuseumLookup) Find(code string) ([]interface{}, error) {
+func (l *SFOMuseumLookup) Find(ctx context.Context, code string) ([]interface{}, error) {
 
 	pointers, ok := lookup_table.Load(code)
 
@@ -159,4 +128,60 @@ func (l *SFOMuseumLookup) Find(code string) ([]interface{}, error) {
 	}
 
 	return airport, nil
+}
+
+func (l *SFOMuseumLookup) Append(ctx context.Context, data interface{}) error {
+	return appendData(ctx, lookup_table, data.(*Airport))
+}
+
+func appendData(ctx context.Context, table *sync.Map, data *Airport) error {
+
+	idx := atomic.AddInt64(&lookup_idx, 1)
+
+	pointer := fmt.Sprintf("pointer:%d", idx)
+	table.Store(pointer, data)
+
+	str_wofid := strconv.FormatInt(data.WOFID, 10)
+	str_sfomid := strconv.Itoa(data.SFOMuseumID)
+
+	possible_codes := []string{
+		data.IATACode,
+		data.ICAOCode,
+		str_wofid,
+		str_sfomid,
+	}
+
+	for _, code := range possible_codes {
+
+		if code == "" {
+			continue
+		}
+
+		pointers := make([]string, 0)
+		has_pointer := false
+
+		others, ok := table.Load(code)
+
+		if ok {
+
+			pointers = others.([]string)
+		}
+
+		for _, dupe := range pointers {
+
+			if dupe == pointer {
+				has_pointer = true
+				break
+			}
+		}
+
+		if has_pointer {
+			continue
+		}
+
+		pointers = append(pointers, pointer)
+		table.Store(code, pointers)
+	}
+
+	return nil
 }

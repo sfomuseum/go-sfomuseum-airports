@@ -11,7 +11,7 @@ import (
 	"github.com/whosonfirst/go-whosonfirst-iterate/iterator"
 	"github.com/whosonfirst/go-whosonfirst-uri"
 	"io"
-	"log"
+	_ "log"
 	"sync"
 )
 
@@ -56,7 +56,7 @@ func CompileAirportsData(ctx context.Context, iterator_uri string, iterator_sour
 		pt := sfomuseum_props.Placetype(f)
 
 		if pt != "airport" {
-			log.Println("NOT AN AIRPORT", whosonfirst.Id(f), whosonfirst.Name(f), pt)
+			//log.Println("NOT AN AIRPORT", whosonfirst.Id(f), whosonfirst.Name(f), pt)
 			return nil
 		}
 
