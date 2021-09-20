@@ -1,46 +1,57 @@
 package sfomuseum
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"github.com/sfomuseum/go-sfomuseum-airports"
+	"github.com/sfomuseum/go-sfomuseum-airports/data"
+	"io"
 	"strconv"
 	"strings"
 	"sync"
 )
 
-type Airport struct {
-	WOFID       int64  `json:"wof:id"`
-	Name        string `json:"wof:name"`
-	SFOMuseumID int    `json:"sfomuseum:airport_id"`
-	IATACode    string `json:"iata:code"`
-	ICAOCode    string `json:"icao:code"`
-}
-
-func (a *Airport) String() string {
-	return fmt.Sprintf("%s %s \"%s\" %d", a.IATACode, a.ICAOCode, a.Name, a.WOFID)
-}
-
 var lookup_table *sync.Map
 var lookup_init sync.Once
+var lookup_init_err error
+
+type SFOMuseumLookupFunc func(context.Context)
 
 type SFOMuseumLookup struct {
 	airports.Lookup
 }
 
-func NewLookup() (airports.Lookup, error) {
+func NewLookup(ctx context.Context, uri string) (airports.Lookup, error) {
 
-	var lookup_err error
+	fs := data.FS
+	fh, err := fs.Open("sfomuseum.json")
 
-	lookup_func := func() {
+	if err != nil {
+		return nil, fmt.Errorf("Failed to load data, %v", err)
+	}
+
+	lookup_func := NewLookupFuncWithReader(ctx, fh)
+	return NewLookupWithLookupFunc(ctx, lookup_func)
+}
+
+// NewLookup will return an `SFOMuseumLookupFunc` function instance that, when invoked, will populate an `airports.Lookup` instance with data stored in `r`.
+// `r` will be closed when the `SFOMuseumLookupFunc` function instance is invoked.
+// It is assumed that the data in `r` will be formatted in the same way as the procompiled (embedded) data stored in `data/sfomuseum.json`.
+func NewLookupFuncWithReader(ctx context.Context, r io.ReadCloser) SFOMuseumLookupFunc {
+
+	lookup_func := func(ctx context.Context) {
+
+		defer r.Close()
 
 		var airport []*Airport
 
-		err := json.Unmarshal([]byte(AirportData), &airport)
+		dec := json.NewDecoder(r)
+		err := dec.Decode(&airport)
 
 		if err != nil {
-			lookup_err = err
+			lookup_init_err = err
 			return
 		}
 
@@ -97,10 +108,20 @@ func NewLookup() (airports.Lookup, error) {
 		lookup_table = table
 	}
 
-	lookup_init.Do(lookup_func)
+	return lookup_func
+}
 
-	if lookup_err != nil {
-		return nil, lookup_err
+// NewLookupWithLookupFunc will return an `airports.Lookup` instance derived by data compiled using `lookup_func`.
+func NewLookupWithLookupFunc(ctx context.Context, lookup_func SFOMuseumLookupFunc) (airports.Lookup, error) {
+
+	fn := func() {
+		lookup_func(ctx)
+	}
+
+	lookup_init.Do(fn)
+
+	if lookup_init_err != nil {
+		return nil, lookup_init_err
 	}
 
 	l := SFOMuseumLookup{}
