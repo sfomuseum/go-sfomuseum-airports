@@ -15,9 +15,9 @@ import (
 	"sync"
 )
 
-func CompileAirportsData(ctx context.Context, iterator_uri string, iterator_sources ...string) ([]Airport, error) {
+func CompileAirportsData(ctx context.Context, iterator_uri string, iterator_sources ...string) ([]*Airport, error) {
 
-	lookup := make([]Airport, 0)
+	lookup := make([]*Airport, 0)
 	mu := new(sync.RWMutex)
 
 	iter_cb := func(ctx context.Context, fh io.ReadSeeker, args ...interface{}) error {
@@ -90,7 +90,7 @@ func CompileAirportsData(ctx context.Context, iterator_uri string, iterator_sour
 		}
 
 		mu.Lock()
-		lookup = append(lookup, a)
+		lookup = append(lookup, &a)
 		mu.Unlock()
 
 		return nil
