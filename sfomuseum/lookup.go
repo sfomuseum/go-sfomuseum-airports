@@ -7,6 +7,8 @@ import (
 	"github.com/sfomuseum/go-sfomuseum-airports"
 	"github.com/sfomuseum/go-sfomuseum-airports/data"
 	"io"
+	"net/http"
+	"net/url"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,17 +34,56 @@ func init() {
 	lookup_idx = int64(0)
 }
 
+// NewLookup will return an `airports.Lookup` instance. By default the lookup table is derived from precompiled (embedded) data in `data/sfomuseum.json`
+// by passing in `sfomuseum://` as the URI. It is also possible to create a new lookup table with the following URI options:
+// 	`sfomuseum://github`
+// This will cause the lookup table to be derived from the data stored at https://raw.githubusercontent.com/sfomuseum/go-sfomuseum-airports/main/data/sfomuseum.json. This might be desirable if there have been updates to the underlying data that are not reflected in the locally installed package's pre-compiled data.
+//	`sfomuseum://iterator?uri={URI}&source={SOURCE}`
+// This will cause the lookup table to be derived, at runtime, from data emitted by a `whosonfirst/go-whosonfirst-iterate` instance. `{URI}` should be a valid `whosonfirst/go-whosonfirst-iterate/iterator` URI and `{SOURCE}` is one or more URIs for the iterator to process.
 func NewLookup(ctx context.Context, uri string) (airports.Lookup, error) {
 
-	fs := data.FS
-	fh, err := fs.Open("sfomuseum.json")
+	u, err := url.Parse(uri)
 
 	if err != nil {
-		return nil, fmt.Errorf("Failed to load data, %v", err)
+		return nil, fmt.Errorf("Failed to parse URI, %w", err)
 	}
 
-	lookup_func := NewLookupFuncWithReader(ctx, fh)
-	return NewLookupWithLookupFunc(ctx, lookup_func)
+	// Reminder: u.Scheme is used by the airports.Lookup constructor
+
+	switch u.Host {
+	case "iterator":
+
+		q := u.Query()
+
+		iterator_uri := q.Get("uri")
+		iterator_sources := q["source"]
+
+		return NewLookupFromIterator(ctx, iterator_uri, iterator_sources...)
+
+	case "github":
+
+		data_url := "https://raw.githubusercontent.com/sfomuseum/go-sfomuseum-airports/main/data/sfomuseum.json"
+		rsp, err := http.Get(data_url)
+
+		if err != nil {
+			return nil, fmt.Errorf("Failed to load remote data from Github, %w", err)
+		}
+
+		lookup_func := NewLookupFuncWithReader(ctx, rsp.Body)
+		return NewLookupWithLookupFunc(ctx, lookup_func)
+
+	default:
+
+		fs := data.FS
+		fh, err := fs.Open("sfomuseum.json")
+
+		if err != nil {
+			return nil, fmt.Errorf("Failed to load local precompiled data, %w", err)
+		}
+
+		lookup_func := NewLookupFuncWithReader(ctx, fh)
+		return NewLookupWithLookupFunc(ctx, lookup_func)
+	}
 }
 
 // NewLookup will return an `SFOMuseumLookupFunc` function instance that, when invoked, will populate an `airports.Lookup` instance with data stored in `r`.

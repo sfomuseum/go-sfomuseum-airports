@@ -17,28 +17,36 @@ func TestSFOMuseumLookup(t *testing.T) {
 
 	ctx := context.Background()
 
-	lu, err := airports.NewLookup(ctx, "sfomuseum://")
-
-	if err != nil {
-		t.Fatalf("Failed to create lookup, %v", err)
+	schemes := []string{
+		"sfomuseum://",
+		"sfomuseum://github",
 	}
 
-	for code, wofid := range wofid_tests {
+	for _, s := range schemes {
 
-		results, err := lu.Find(ctx, code)
+		lu, err := airports.NewLookup(ctx, s)
 
 		if err != nil {
-			t.Fatalf("Unable to find '%s', %v", code, err)
+			t.Fatalf("Failed to create lookup using scheme '%s', %v", s, err)
 		}
 
-		if len(results) != 1 {
-			t.Fatalf("Invalid results for '%s'", code)
-		}
+		for code, wofid := range wofid_tests {
 
-		a := results[0].(*Airport)
+			results, err := lu.Find(ctx, code)
 
-		if a.WOFID != wofid {
-			t.Fatalf("Invalid match for '%s', expected %d but got %d", code, wofid, a.WOFID)
+			if err != nil {
+				t.Fatalf("Unable to find '%s' using scheme '%s', %v", code, s, err)
+			}
+
+			if len(results) != 1 {
+				t.Fatalf("Invalid results for '%s' using scheme '%s'", s, code)
+			}
+
+			a := results[0].(*Airport)
+
+			if a.WOFID != wofid {
+				t.Fatalf("Invalid match for '%s' using scheme '%s', expected %d but got %d", code, s, wofid, a.WOFID)
+			}
 		}
 	}
 }
